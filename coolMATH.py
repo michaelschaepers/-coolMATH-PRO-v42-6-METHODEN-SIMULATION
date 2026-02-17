@@ -882,6 +882,20 @@ def db_update_monday_id(projekt_id, monday_id):
 # ==========================================
 import requests as _requests
 
+
+def get_monday_secrets():
+    """Lädt Monday Secrets mit Fallback"""
+    try:
+        api_token = st.secrets.get("MONDAY_API_TOKEN", "")
+        board_id = st.secrets.get("MONDAY_BOARD_ID", "")
+        if not api_token:
+            api_token = st.secrets.get("monday_key", "")
+        if not board_id:
+            board_id = st.secrets.get("monday_board_id", "")
+        return api_token, board_id
+    except Exception:
+        return "", ""
+
 class MondayIntegration:
     """Verwaltet die Kommunikation mit Monday.com"""
 
@@ -1454,7 +1468,7 @@ def _make_cover(story, proj, kunde, bearbeiter, firma,
 
     # Thermische Grafik
     story.append(ThermalGraphic(175*mm, 65*mm))
-    story.append(Spacer(1, 6*mm))
+    story.append(Spacer(1, 15*mm))
 
     # Typ-Badge
     badge_color = _BLUE if report_type == 'kunde' else colors.HexColor('#37474f')
@@ -2002,13 +2016,14 @@ def main():
     setup_page()
     db_init()
 
-    # --- LOGIN ---
-    auth_ok, auth_user = check_login()
-    if not auth_ok:
-        return
-    partner_firma = auth_user.get("firma", "")
-    auth_role     = auth_user.get("role", "partner")
-    auth_username = auth_user.get("username", "")
+    # --- LOGIN DISABLED ---
+    # auth_ok, auth_user = check_login()
+    # if not auth_ok:
+    #     return
+    partner_firma = "°coolsulting"
+    auth_role     = "admin"
+    auth_username = "demo"
+
 
     # --- HEADER (Bug-freier Aufbau) ---
     # Logout in Sidebar
@@ -2611,8 +2626,8 @@ def main():
                 # Default: Zone 1 = AJ040 (4.0kW), rest = N.V. (außer wenn IG > 0)
                 def_fjm = 0
                 if i == 0 and ig_kw == 0:
-                    # Zone 1 ohne IG: Default = AJ040 (4.0kW index 1)
-                    def_fjm = 1  # AJ040
+                    # Zone 1 ohne IG: Default = AJ050 (5.0kW index 2)
+                    def_fjm = 2  # AJ050
                 elif ig_kw > 0:
                     # IG ausgewählt: kleinstes AG >= ig_kw
                     for fi, fk in enumerate(fjm_keys_raw):
