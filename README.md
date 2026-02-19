@@ -45,7 +45,4 @@ fpdf               PDF-Generierung
 openpyxl           Samsung-Datenbankimport (Excel)
 NumPy / Pandas     Physik-Berechnungen
 
-Starten
-bashstreamlit run coolMATH.py
-Alle Listenpreise netto, zzgl. MwSt. | Ohne Montage und Zubehör
-Datenquelle: MTF Samsung WaWi-Import 2026-02-02
+
