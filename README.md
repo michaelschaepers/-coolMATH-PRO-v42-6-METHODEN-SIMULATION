@@ -12,13 +12,6 @@ ParameterOptionenFlächem²BaustandardAltbau / Neubau / PassivhausVerglasungEinf
 MethodeBasisTypisches ErgebnisPraktikerHeuristik (Faustregel + Solar)konservativ / hochVDI 2078 ALTKlassische Norm (1996)mittel-hochVDI 6007 NEURC-Modell mit Einschwingung (96h)niedrig (physikalisch exakt)RecknagelStandard-abhängiges ΔTmittelKaltluftseeRecknagel × 1/1.3 (Quelllüftung)niedrigKI-HybridGewichteter Mix + Peak-Shavingausgewogen
 Alle Methoden liefern ein 24-Stunden-Lastprofil (stündlich) und einen Peak-Wert in Watt.
 
-Gerätedatenbank — nur Samsung S_FJM Wandgeräte
-Echte Preise aus MTF-Datenbank (Stand 2026-02-02). Ausschließlich RAC|FJM Wandgeräte (kein BAC, kein S_RAC).
-8 Serien — Innengeräte (IG):
-SerieArt.-Nr. PrefixLeistungLP abWind-Free Standard (Default)AR60F…AWN2.0 – 5.0 kW693 EURAirise LivingAR50F…BHN2.0 – 6.5 kW554 EURWF ExklusivAR70F…C1AWN2.0 – 6.5 kW1.048 EURWF Exklusiv BlackAR70F…C1ABN2.0 – 3.5 kW1.178 EURWF Exklusiv-PremiereAR70H…C1AWN2.0 – 6.5 kW1.072 EURWF Exklusiv-Premiere BlackAR70H…C1ABN2.0 – 3.5 kW1.112 EURWF EliteAR70F…CAAWK2.0 – 3.5 kW1.347 EURWF Elite-Premiere PlusAR70H…CAAW2.0 – 3.5 kW1.296 EUR
-Außengeräte (AG) — FJM Multi-Split:
-Art.-Nr.LeistungZonenLPAJ040TXJ2KG/EU4.0 kW22.347 EURAJ050TXJ2KG/EU5.0 kW22.706 EURAJ052TXJ3KG/EU5.2 kW33.061 EURAJ068TXJ3KG/EU6.8 kW33.548 EURAJ080TXJ4KG/EU8.0 kW44.494 EURAJ100TXJ5KG/EU10.0 kW55.533 EUR
-
 Geräteauswahl-Logik
 
 Basis: Praktiker-Peak + 10% Sicherheitszuschlag
