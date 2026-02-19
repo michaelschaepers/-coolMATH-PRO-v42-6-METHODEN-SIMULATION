@@ -6,7 +6,7 @@
 # AUTOR: Michael Schäpers, °coolsulting
 # ==========================================
 # ÄNDERUNGEN v44.0 (gegenüber v42):
-# - SAMSUNG_SERIEN Datenbank: 9 echte Serien aus Excel MTF-WaWi 2026-02-02
+# - SAMSUNG_SERIEN Datenbank: 9 echte Serien aus Excel 
 #   Airise Living, WF Standard, WF Exklusiv, WF Exklusiv Black,
 #   WF Exklusiv-Premiere, WF Exklusiv-Premiere Black,
 #   WF Elite, WF Elite-Premiere Plus, WF Elite-Premiere Plus Black
@@ -14,7 +14,7 @@
 # - find_samsung_device() unterstützt optionalen serie-Parameter
 # - device_label() nutzt gewählte Serie
 # - hw_map aktualisiert mit echten Artikelnummern
-# - Preise aus Excel-Import (MTF WaWi 2026-02-02)
+# - Preise aus Excel-Import 
 # - METHODEN-Physik: alle 6 Formeln korrigiert (Praktiker, Recknagel,
 #   VDI Neu RC-Modell 96h, Kaltluftsee /1.3, KI-Hybrid Phase/Dämpfung)
 # - matplotlib Agg Backend gesetzt (PDF kein Crash)
@@ -42,6 +42,85 @@ APP_VERSION = "4.76.5"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
+
+# --- PREISLISTE ---
+PREISLISTE_PATH = "S_Klima_Artikel_Import_2026-02-02-APP.xlsx"
+
+def load_samsung_prices():
+    """Lädt Samsung-Preise aus Excel-Datei"""
+    import os
+    import re
+    
+    # Suche Preisliste in verschiedenen Pfaden
+    search_paths = [
+        PREISLISTE_PATH,
+        os.path.join(os.path.dirname(__file__), PREISLISTE_PATH),
+        os.path.join('/mnt/user-data/outputs', PREISLISTE_PATH),
+    ]
+    
+    xlsx_path = None
+    for path in search_paths:
+        if os.path.exists(path):
+            xlsx_path = path
+            break
+    
+    if not xlsx_path:
+        # Fallback auf hardcoded Preise
+        return {
+            4.0:  {"preis": 2347},
+            5.0:  {"preis": 2706},
+            5.2:  {"preis": 3061},
+            6.8:  {"preis": 3548},
+            8.0:  {"preis": 4494},
+            10.0: {"preis": 5533},
+        }
+    
+    try:
+        import pandas as pd
+        df = pd.read_excel(xlsx_path, sheet_name=' Kima 2026-02-02')
+        
+        # FJM AG Außengeräte extrahieren
+        fjm_ag = df[(df['Artikelgruppe'] == 'S_FJM') & 
+                    (df['Bezeichnung'].str.contains('AG', case=False)) &
+                    (df['Artikelnummer'].str.startswith('AJ0'))]
+        
+        prices = {}
+        for _, row in fjm_ag.iterrows():
+            langtext = row['Langtext']
+            preis = row['Listenpreis']
+            
+            # kW aus Langtext extrahieren
+            kw_match = re.search(r'Kühlen\s+(\d+\.?\d*)\s*kW', langtext, re.IGNORECASE)
+            if kw_match:
+                kw = float(kw_match.group(1))
+                prices[kw] = {"preis": preis}
+        
+        return prices if prices else {
+            4.0:  {"preis": 2347},
+            5.0:  {"preis": 2706},
+            5.2:  {"preis": 3061},
+            6.8:  {"preis": 3548},
+            8.0:  {"preis": 4494},
+            10.0: {"preis": 5533},
+        }
+    except Exception as e:
+        print(f"⚠️ Preisliste konnte nicht geladen werden: {e}")
+        # Fallback
+        return {
+            4.0:  {"preis": 2347},
+            5.0:  {"preis": 2706},
+            5.2:  {"preis": 3061},
+            6.8:  {"preis": 3548},
+            8.0:  {"preis": 4494},
+            10.0: {"preis": 5533},
+        }
+
+# --- GERÄTE-PREISLISTEN (für PDF-Berichte) ---
+FJM_AG_PRICES = load_samsung_prices()
+RAC_AG_PRICES = {
+    # Wird aus main() RAC_AG_BY_SERIE extrahiert falls benötigt
+}
+
 
 def pdf_safe(text):
     """Sanitize text for FPDF (latin-1 only). Replace common non-latin-1 chars."""
@@ -767,21 +846,8 @@ import sqlite3, json as _json, hashlib
 DB_PATH = "coolmath_projects.db"
 
 def _get_db():
-    """Gibt DB-Verbindung zurück. Turso wenn konfiguriert, sonst SQLite."""
-    # Hardcoded Turso-Zugangsdaten (Fallback wenn secrets nicht gesetzt)
-    _TURSO_URL   = "libsql://coolmatch-michaelschaepers1972.aws-eu-west-1.turso.io"
-    _TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzExOTEwMDcsImlkIjoiYzY3YTJlNGUtZjYyNi00YzFhLWE5ODYtMzQ5NjY3NTQwZjdiIiwicmlkIjoiODlmMDMyZmItYTMyZC00N2JkLWI0OGQtNDRkYjI2YzAzZTk4In0.cXCeuEbFPcjaqFJODhVAX3C1IrurAvDW-ihMd7nxyM2ssJ2UGLPSJmNXVWiaPyUpVU1FJvCJ3hkGNbigUdBsBw"
-    try:
-        turso_url   = st.secrets["turso"]["url"]
-        turso_token = st.secrets["turso"]["token"]
-    except Exception:
-        turso_url, turso_token = _TURSO_URL, _TURSO_TOKEN
-    try:
-        import libsql_experimental as libsql
-        conn = libsql.connect(turso_url, auth_token=turso_token)
-        return conn, "turso"
-    except Exception:
-        pass
+    """Gibt DB-Verbindung zurück. SQLite lokal (Turso deaktiviert)."""
+    # Turso deaktiviert - nutze lokale SQLite
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     return conn, "sqlite"
 
@@ -1434,88 +1500,84 @@ def _thermal_cover_graphic(canvas, x, y, w, h):
 
 def _make_cover(story, proj, kunde, bearbeiter, firma,
                 partner_firma, report_type, g_sums, selected_hw):
-    """Deckblatt mit thermischer Grafik"""
-    from reportlab.platypus import Flowable
-
-    # Thermische Grafik als echter reportlab Flowable
-    class ThermalGraphic(Flowable):
-        def __init__(self, width, height):
-            Flowable.__init__(self)
-            self.width = width
-            self.height = height
-        def wrap(self, aw, ah):
-            return self.width, self.height
-        def draw(self):
-            _thermal_cover_graphic(self.canv, 0, 0, self.width, self.height)
-
-    # Blauer Header-Block
-    header_tbl = Table([[
-        Paragraph('°coolMATH Pro', ParagraphStyle('ct2', fontName='Helvetica-Bold',
-            fontSize=28, textColor=_WHITE, alignment=TA_LEFT)),
-        Paragraph(f'Version {APP_VERSION}', ParagraphStyle('cv', fontName='Helvetica',
-            fontSize=10, textColor=colors.HexColor('#b3e5fc'), alignment=TA_RIGHT)),
-    ]], colWidths=[120*mm, 55*mm])
+    """Deckblatt - EINFACHER STIL WIE SEITE 2"""
+    
+    # 1. BLAUER HEADER
+    badge_text = '👔 KUNDENBERICHT' if report_type == 'kunde' else '🔧 TECHNIKÜBERGABE'
+    
+    header_title = Paragraph('°coolMATH Pro — Kühllastanalyse', 
+        ParagraphStyle('ht', fontName='Helvetica-Bold', fontSize=22, 
+                      textColor=_WHITE, alignment=TA_LEFT))
+    header_sub = Paragraph(f'Version {APP_VERSION}  |  {datetime.now().strftime("%d.%m.%Y")}', 
+        ParagraphStyle('hs', fontName='Helvetica', fontSize=10, 
+                      textColor=colors.HexColor('#e0f2f9'), alignment=TA_LEFT))
+    header_firma = Paragraph(partner_firma or firma, 
+        ParagraphStyle('hf', fontName='Helvetica', fontSize=10, 
+                      textColor=_WHITE, alignment=TA_RIGHT))
+    
+    header_tbl = Table([
+        [header_title, header_firma],
+        [header_sub, ''],
+    ], colWidths=[140*mm, 35*mm])
     header_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), _BLUE),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 12),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('VALIGN', (0,0), (0,0), 'TOP'),
+        ('VALIGN', (1,0), (1,0), 'TOP'),
+        ('SPAN', (0,1), (1,1)),
+        ('TOPPADDING', (0,0), (-1,-1), 15),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+        ('LEFTPADDING', (0,0), (-1,-1), 15),
+        ('RIGHTPADDING', (0,0), (-1,-1), 15),
     ]))
     story.append(header_tbl)
-    story.append(Spacer(1, 5*mm))
-
-    # Thermische Grafik
-    story.append(ThermalGraphic(175*mm, 65*mm))
-    story.append(Spacer(1, 15*mm))
-
-    # Typ-Badge
-    badge_color = _BLUE if report_type == 'kunde' else colors.HexColor('#37474f')
-    badge_text  = '👔 KUNDENBERICHT' if report_type == 'kunde' else '🔧 TECHNIKÜBERGABE'
-    badge_tbl = Table([[Paragraph(badge_text, ParagraphStyle('badge', fontName='Helvetica-Bold',
-        fontSize=11, textColor=_WHITE, alignment=TA_CENTER))]],
-        colWidths=[175*mm])
+    story.append(Spacer(1, 20*mm))
+    
+    # 2. TYP-BADGE
+    badge_para = Paragraph(badge_text, ParagraphStyle('badge', 
+        fontName='Helvetica-Bold', fontSize=13, textColor=_WHITE, alignment=TA_CENTER))
+    badge_color = _BLUE if report_type == 'kunde' else colors.HexColor('#546e7a')
+    badge_tbl = Table([[badge_para]], colWidths=[175*mm])
     badge_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), badge_color),
-        ('TOPPADDING', (0,0), (-1,-1), 8), ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 12),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
     ]))
     story.append(badge_tbl)
-    story.append(Spacer(1, 8*mm))
-
-    # Projekt-Info Tabelle
+    story.append(Spacer(1, 15*mm))
+    
+    # 3. PROJEKT-INFO TABELLE
     peak_vdi = int(np.max(g_sums['VDI_N']))
     total_kw = sum(selected_hw)
+    
     info_rows = [
-        ['Projekt',     proj],
-        ['Kunde',       kunde],
-        ['Bearbeiter',  bearbeiter],
-        ['Firma',       partner_firma or firma],
-        ['Datum',       datetime.now().strftime('%d.%m.%Y')],
-        ['VDI 6007 Peak', f'{peak_vdi:,} W  ({peak_vdi/1000:.1f} kW)'],
-        ['Installation', f'{total_kw:.1f} kW gesamt (Samsung Wind-Free)'],
+        ['Projekt',         proj],
+        ['Kunde',           kunde],
+        ['Bearbeiter',      bearbeiter],
+        ['Firma',           partner_firma or firma],
+        ['Datum',           datetime.now().strftime('%d.%m.%Y')],
+        ['VDI 6007 Peak',   f'{peak_vdi:,} W ({peak_vdi/1000:.1f} kW)'],
+        ['Installation',    f'{total_kw:.1f} kW gesamt (Samsung Wind-Free)'],
     ]
-    info_tbl = Table([[Paragraph(r[0], ParagraphStyle('ik', fontName='Helvetica-Bold',
-                         fontSize=9, textColor=_DARK)),
-                       Paragraph(r[1], ParagraphStyle('iv', fontName='Helvetica',
-                         fontSize=9, textColor=_DARK))]
-                      for r in info_rows],
-                     colWidths=[45*mm, 130*mm])
+    
+    info_tbl = Table([[
+        Paragraph(r[0], ParagraphStyle('lbl', fontName='Helvetica-Bold',
+            fontSize=10, textColor=_DARK)),
+        Paragraph(r[1], ParagraphStyle('val', fontName='Helvetica',
+            fontSize=10, textColor=_DARK))]
+        for r in info_rows],
+        colWidths=[50*mm, 125*mm])
+    
     info_tbl.setStyle(TableStyle([
         ('ROWBACKGROUNDS', (0,0), (-1,-1), [_WHITE, _LGRAY]),
-        ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#cccccc')),
-        ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('LEFTPADDING', (0,0), (-1,-1), 8), ('RIGHTPADDING', (0,0), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#ddd')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 12),
+        ('RIGHTPADDING', (0,0), (-1,-1), 12),
     ]))
     story.append(info_tbl)
-    story.append(Spacer(1, 8*mm))
-
-    # Disclaimer
-    story.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#cccccc')))
-    story.append(Spacer(1, 2*mm))
-    story.append(Paragraph(_COPYRIGHT, _S['disclaimer']))
-    story.append(PageBreak())
+    story.append(PageBreak())  # Kein Copyright hier - kommt am Ende
 
 
 def _eingabe_tabelle(story, room_inputs, zone_names):
@@ -1549,22 +1611,54 @@ def _eingabe_tabelle(story, room_inputs, zone_names):
     story += [t, Spacer(1, 5*mm)]
 
 
-def _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names):
-    """IG + AG Gerätetabelle für beide Berichte"""
-    story += _section_hdr('Geräteauswahl', 'Innen- und Außengeräte je Zone')
-    hdr = ['Zone', 'IG Leistung', 'IG Art.-Nr.', 'AG Typ', 'AG Art.-Nr.']
+def _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names, 
+                     show_prices=True, show_artnr=True, selected_ig_artnr=None):
+    """IG + AG Gerätetabelle - Kunde: keine Preise/Art.-Nr., Technik: mit Preisen"""
+    if selected_ig_artnr is None:
+        selected_ig_artnr = ['—'] * 5
+    story += _section_hdr('Geräteauswahl inkl. Listenpreise' if show_prices else 'Geräteauswahl', 
+                         'Innen- und Außengeräte je Zone')
+    
+    # Header + Spalten je nach Modus
+    if show_prices:
+        hdr = ['Zone', 'IG kW', 'AG Typ', 'AG Art.-Nr.', 'IG Art.-Nr.', 'AG LP [EUR]']
+        widths = [28*mm, 18*mm, 20*mm, 40*mm, 40*mm, 25*mm]
+    elif show_artnr:
+        hdr = ['Zone', 'IG Leistung', 'IG Art.-Nr.', 'AG Typ', 'AG Art.-Nr.']
+        widths = [28*mm, 28*mm, 42*mm, 22*mm, 42*mm]
+    else:
+        # Kundenbericht: nur Zone, IG Leistung, AG Typ
+        hdr = ['Zone', 'IG Leistung', 'AG Typ']
+        widths = [55*mm, 50*mm, 57*mm]
+    
     rows = [hdr]
     for zi in range(5):
         ig_kw  = selected_hw[zi]   if zi < len(selected_hw) else 0
+        ig_artnr = selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—'
         ag_inf = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—', 0, 'N.V.')
         ag_typ  = ag_inf[0] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>0 else '—'
+        ag_kw   = ag_inf[1] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>1 else 0
         ag_artnr= ag_inf[2] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>2 else 'N.V.'
         zone_n  = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
-        rows.append([zone_n,
-                     f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
-                     '—',  # Art.-Nr. aus IG_OPTIONS — wird durch Caller befüllt
-                     ag_typ, ag_artnr])
-    widths = [28*mm, 28*mm, 42*mm, 22*mm, 42*mm]
+        
+        if show_prices:
+            # AG-Preis ermitteln
+            ag_preis_str = '—'
+            if ag_kw and ag_kw > 0 and ag_typ == 'FJM':
+                try:
+                    if ag_kw in FJM_AG_PRICES:
+                        ag_preis_str = f"{FJM_AG_PRICES[ag_kw]['preis']:,} EUR".replace(',', '.')
+                except Exception:
+                    pass
+            
+            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', 
+                        ag_typ, ag_artnr, ig_artnr, ag_preis_str])
+        elif show_artnr:
+            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
+                        ig_artnr, ag_typ, ag_artnr])
+        else:
+            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', ag_typ])
+    
     t = Table(rows, colWidths=widths, repeatRows=1)
     t.setStyle(_tbl_style_fn(total_row=False))
     story += [t, Spacer(1, 5*mm)]
@@ -1694,15 +1788,16 @@ def build_transfer_report(proj, kunde, bearbeiter, firma, room_results, g_sums,
 def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
                          individual_profiles, samsung_recommendations,
                          selected_hw, total_installed_kw, selected_hw_ag=None,
-                         room_inputs=None, partner_firma=""):
+                         room_inputs=None, partner_firma="", selected_ig_artnr=None):
     if selected_hw_ag is None: selected_hw_ag = []
+    if selected_ig_artnr is None: selected_ig_artnr = ['—'] * 5
     if room_inputs is None:    room_inputs = [{} for _ in range(5)]
     zone_names = [r.get('ZONE', f'Zone {i+1}') for i, r in enumerate(room_results)]
 
     buf = _io.BytesIO()
     hf  = lambda c, d: _hf_normal(c, d, partner_firma, firma)
     doc = SimpleDocTemplate(buf, pagesize=A4,
-                             topMargin=32*mm, bottomMargin=22*mm,
+                             topMargin=45*mm, bottomMargin=22*mm,
                              leftMargin=15*mm, rightMargin=15*mm)
     story = []
 
@@ -1745,7 +1840,8 @@ def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     story += [t, Spacer(1, 5*mm)]
 
     # Geräteauswahl (kein Preis im Kundenbericht)
-    _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names)
+    _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names, 
+                     show_prices=False, show_artnr=False, selected_ig_artnr=selected_ig_artnr)
 
     # Alle 6 Einzelzonen-Diagramme
     story.append(PageBreak())
@@ -1777,15 +1873,16 @@ def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
 def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
                             individual_profiles, samsung_recommendations,
                             selected_hw, total_installed_kw, selected_hw_ag=None,
-                            room_inputs=None, partner_firma=""):
+                            room_inputs=None, partner_firma="", selected_ig_artnr=None):
     if selected_hw_ag is None: selected_hw_ag = []
+    if selected_ig_artnr is None: selected_ig_artnr = ['—'] * 5
     if room_inputs is None:    room_inputs = [{} for _ in range(5)]
     zone_names = [r.get('ZONE', f'Zone {i+1}') for i, r in enumerate(room_results)]
 
     buf = _io.BytesIO()
     hf  = lambda c, d: _hf_normal(c, d, partner_firma, firma)
     doc = SimpleDocTemplate(buf, pagesize=A4,
-                             topMargin=32*mm, bottomMargin=22*mm,
+                             topMargin=45*mm, bottomMargin=22*mm,
                              leftMargin=15*mm, rightMargin=15*mm)
     story = []
 
@@ -1812,24 +1909,10 @@ def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     t.setStyle(_tbl_style_fn())
     story += [t, Spacer(1, 5*mm)]
 
-    # Geräteauswahl MIT Preisen
-    story += _section_hdr('Geräteauswahl inkl. Listenpreise')
-    hdr2 = ['Zone', 'IG kW', 'AG Typ', 'AG Art.-Nr.', 'IG LP [EUR]']
-    rows2 = [hdr2]
-    total_p = 0.0
-    for zi in range(5):
-        ig_kw   = selected_hw[zi]   if zi < len(selected_hw) else 0
-        ag_inf  = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—',0,'N.V.')
-        ag_typ  = ag_inf[0] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>0 else '—'
-        ag_artnr= ag_inf[2] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>2 else 'N.V.'
-        zone_n  = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
-        rows2.append([zone_n,
-                      f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
-                      ag_typ, ag_artnr, '(s. Angebot)'])
-    rows2.append(['GESAMT', f'{sum(selected_hw):.1f} kW', '', '', ''])
-    t2 = Table(rows2, colWidths=[28*mm, 24*mm, 22*mm, 55*mm, 35*mm], repeatRows=1)
-    t2.setStyle(_tbl_style_fn())
-    story += [t2, Spacer(1, 5*mm)]
+    # Geräteauswahl MIT Preisen (Technikübergabe)
+    _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names,
+                     show_prices=True, show_artnr=True, selected_ig_artnr=selected_ig_artnr)
+
 
     # Samsung Empfehlungen
     if any(samsung_recommendations):
@@ -2063,11 +2146,23 @@ def main():
     st.write("---")
     
     # --- PROJEKT KONFIGURATION ---
+    # Geladene Projektdaten auslesen
+    loaded = st.session_state.get('loaded_project', None)
+    if loaded:
+        default_proj = loaded.get('projekt', 'Headquarter')
+        default_kunde = loaded.get('kunde', 'Beispiel AG')
+        default_bearb = loaded.get('bearbeiter', 'Michael Schaepers')
+        st.info(f"📂 Geladenes Projekt: {default_proj}")
+    else:
+        default_proj = 'Headquarter'
+        default_kunde = 'Beispiel AG'
+        default_bearb = 'Michael Schaepers'
+    
     with st.expander("⚙️ PROJEKT-KONFIGURATION & BEARBEITER", expanded=True):
         px1, px2, px3, px4 = st.columns(4)
-        proj_name  = px1.text_input("PROJEKT", "Headquarter")
-        kunde_name = px2.text_input("KUNDE", "Beispiel AG")
-        bearbeiter = px3.text_input("BEARBEITER", "Michael Schaepers")
+        proj_name  = px1.text_input("PROJEKT", default_proj)
+        kunde_name = px2.text_input("KUNDE", default_kunde)
+        bearbeiter = px3.text_input("BEARBEITER", default_bearb)
         firma      = px4.text_input("FIRMA", "°coolsulting")
     
     # --- GEBÄUDE-PARAMETER ---
@@ -2553,6 +2648,7 @@ def main():
 
     selected_hw    = []
     selected_hw_ag = []
+    selected_ig_artnr = []  # Neu: IG Art.-Nr. speichern
     final_cols = st.columns(5)
 
     for i, col in enumerate(final_cols):
@@ -2570,18 +2666,24 @@ def main():
                     def_ig_idx = ig_idx
                     break
 
-            # Info-Box
-            vdi_kw, _, _, _ = device_label(vdi_peak, safety=1.10, serie=z_serie)
-            ki_kw,  _, _, _ = device_label(method_peaks[i]["KI HYBRID"], safety=1.10, serie=z_serie)
+            # Info-Box - alle 6 Methoden berechnen
+            vdi_kw,   _, _, _ = device_label(vdi_peak, safety=1.10, serie=z_serie)
+            vdi_a_kw, _, _, _ = device_label(method_peaks[i]["VDI ALT"], safety=1.10, serie=z_serie)
+            reck_kw,  _, _, _ = device_label(method_peaks[i]["RECKNAGEL"], safety=1.10, serie=z_serie)
+            klts_kw,  _, _, _ = device_label(method_peaks[i]["KALTLUFTSEE"], safety=1.10, serie=z_serie)
+            ki_kw,    _, _, _ = device_label(method_peaks[i]["KI HYBRID"], safety=1.10, serie=z_serie)
             st.markdown(
                 f"<div style='background:rgba(255,255,255,0.12);border:1px solid "
                 f"rgba(255,255,255,0.3);border-radius:10px;padding:10px;margin-bottom:6px;'>"
                 f"<div style='font-size:11px;font-weight:700;color:white;"
                 f"text-transform:uppercase;'>{r_name}</div>"
-                f"<div style='font-size:9px;color:rgba(255,255,255,0.75);margin-top:4px;'>"
+                f"<div style='font-size:9px;color:rgba(255,255,255,0.75);margin-top:4px;line-height:1.4;'>"
                 f"VDI Neu: {vdi_kw:.1f} kW &nbsp;|&nbsp; "
-                f"Praktiker ★: {prak_kw:.1f} kW &nbsp;|&nbsp; "
-                f"KI: {ki_kw:.1f} kW"
+                f"VDI Alt: {reck_kw:.1f} kW<br/>"
+                f"Recknagel: {vdi_a_kw:.1f} kW &nbsp;|&nbsp; "
+                f"Praktiker ★: {prak_kw:.1f} kW<br/>"
+                f"Kaltluftsee: {klts_kw:.1f} kW &nbsp;|&nbsp; "
+                f"KI-Hybrid: {ki_kw:.1f} kW"
                 f"</div></div>",
                 unsafe_allow_html=True
             )
@@ -2597,6 +2699,12 @@ def main():
             ig_kw    = IG_OPTIONS[ig_val][0]
             ig_serie = IG_OPTIONS[ig_val][1]
             selected_hw.append(ig_kw)
+            
+            # IG Art.-Nr. extrahieren
+            ig_artnr = '—'
+            if ig_kw > 0 and ig_serie in SAMSUNG_SERIEN and ig_kw in SAMSUNG_SERIEN[ig_serie]:
+                ig_artnr = SAMSUNG_SERIEN[ig_serie][ig_kw]['art_nr']
+            selected_ig_artnr.append(ig_artnr)
 
             # 🔀 RAC / FJM Umschalter (nur bei Wandgeräten; Kassette/Kanal/Truhe → immer FJM)
             is_fjm_ig  = ig_serie in FJM_IG_SERIEN
@@ -2623,17 +2731,19 @@ def main():
                 fjm_labels = {"NV": "— nicht vorhanden —"}
                 fjm_labels.update({k: f"{FJM_AG[k]['art_nr']}  |  {FJM_AG[k]['bez']}  |  {FJM_AG[k]['preis']:,} EUR"
                                    for k in fjm_keys_raw})
-                # Default: Zone 1 = AJ040 (4.0kW), rest = N.V. (außer wenn IG > 0)
-                def_fjm = 0
-                if i == 0 and ig_kw == 0:
-                    # Zone 1 ohne IG: Default = AJ050 (5.0kW index 2)
-                    def_fjm = 2  # AJ050
-                elif ig_kw > 0:
-                    # IG ausgewählt: kleinstes AG >= ig_kw
-                    for fi, fk in enumerate(fjm_keys_raw):
-                        if fk >= ig_kw:
-                            def_fjm = fi + 1
-                            break
+                # Default: Zone 1 = AJ100, Zone 2-5 = N.V. (auch wenn IG > 0)
+                def_fjm = 0  # Default = N.V.
+                if i == 0:
+                    # Zone 1: Default = AJ100 (10.0kW index 6) wenn kein IG, sonst passendes AG
+                    if ig_kw == 0:
+                        def_fjm = 6  # AJ100
+                    else:
+                        # IG ausgewählt: kleinstes AG >= ig_kw
+                        for fi, fk in enumerate(fjm_keys_raw):
+                            if fk >= ig_kw:
+                                def_fjm = fi + 1
+                                break
+                # Zone 2-5: immer N.V. (def_fjm bleibt 0)
                 ag_sel = st.selectbox(
                     f"AG {r_name}", fjm_keys, index=def_fjm, key=f"ag{i}",
                     format_func=lambda x, m=fjm_labels: m[x],
@@ -2939,7 +3049,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚀 TECHNIKÜBERGABE GENERIEREN", width="stretch"):
+        if st.button("🔧 TECHNIKÜBERGABE GENERIEREN", width="stretch"):
             with st.spinner("⚙️ PDF wird erstellt..."):
                 try:
                     pdf_bytes = generate_uebergabe_pdf(
@@ -2948,7 +3058,8 @@ def main():
                         samsung_recs, selected_hw, total_kw,
                         selected_hw_ag=selected_hw_ag,
                         room_inputs=room_inputs_list,
-                        partner_firma=partner_firma
+                        partner_firma=partner_firma,
+                        selected_ig_artnr=selected_ig_artnr
                     )
                     st.download_button(
                         "⬇️ DOWNLOAD TECHNIKÜBERGABE",
@@ -2985,7 +3096,8 @@ def main():
                         samsung_recs, selected_hw, total_kw,
                         selected_hw_ag=selected_hw_ag,
                         room_inputs=room_inputs_list,
-                        partner_firma=partner_firma
+                        partner_firma=partner_firma,
+                        selected_ig_artnr=selected_ig_artnr
                     )
                     st.download_button(
                         "⬇️ DOWNLOAD KUNDENBERICHT",
@@ -3065,7 +3177,8 @@ def main():
                             room_results, g_sums, individual_profiles,
                             _samsung_recs, selected_hw, total_kw,
                             selected_hw_ag=selected_hw_ag,
-                            room_inputs=room_inputs_list, partner_firma=partner_firma
+                            room_inputs=room_inputs_list, partner_firma=partner_firma,
+                            selected_ig_artnr=selected_ig_artnr
                         )
                         geraete_str = " | ".join([
                             f"Z{zi+1}: {selected_hw[zi]:.1f}kW" for zi in range(5) if selected_hw[zi]>0
@@ -3090,13 +3203,60 @@ def main():
     with st.expander("📂 Projektarchiv — gespeicherte Projekte"):
         projekte = db_load_projects(partner_firma, auth_role)
         if projekte:
-            proj_df = pd.DataFrame(projekte,
-                columns=["ID","Firma","Projekt","Kunde","Bearbeiter","Datum"])
             if auth_role == "admin":
                 st.caption("👑 Admin-Ansicht: alle Projekte aller Firmen")
             else:
                 st.caption(f"🔒 Nur Projekte von: {partner_firma}")
+            
+            # DataFrame mit View-Controls
+            proj_df = pd.DataFrame(projekte,
+                columns=["ID","Firma","Projekt","Kunde","Bearbeiter","Datum"])
             st.dataframe(proj_df, width="stretch", hide_index=True)
+            
+            st.divider()
+            
+            # Projekt auswählen + Laden
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                projekt_optionen = {f"{p[2]} | {p[3]} | {p[5]}": p[0] 
+                                   for p in projekte}
+                selected = st.selectbox(
+                    "Projekt zum Laden auswählen:",
+                    options=list(projekt_optionen.keys()),
+                    label_visibility="collapsed"
+                )
+            with col2:
+                if st.button("📥 LADEN", type="primary", width="stretch"):
+                    proj_id = projekt_optionen[selected]
+                    row = db_load_project(proj_id)
+                    if row:
+                        try:
+                            import json as _json
+                            room_data_json = row[8] if len(row) > 8 else '{}'
+                            results_json   = row[9] if len(row) > 9 else '{}'
+                            devices_json   = row[10] if len(row) > 10 else '{}'
+                            
+                            room_data = _json.loads(room_data_json) if room_data_json else {}
+                            results   = _json.loads(results_json) if results_json else {}
+                            devices   = _json.loads(devices_json) if devices_json else {}
+                            
+                            st.session_state['loaded_project'] = {
+                                'projekt': row[4],
+                                'kunde': row[5],
+                                'bearbeiter': row[6],
+                                'room_inputs': room_data.get('room_inputs', []),
+                                'room_results': results.get('room_results', []),
+                                'peaks': results.get('peaks', {}),
+                                'selected_hw': devices.get('selected_hw', [0,0,0,0,0]),
+                                'selected_hw_ag': devices.get('selected_hw_ag', []),
+                            }
+                            
+                            st.success(f"✅ Projekt '{row[4]}' geladen!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Fehler: {e}")
+                    else:
+                        st.error("Laden fehlgeschlagen")
         else:
             st.info("Noch keine gespeicherten Projekte.")
 
