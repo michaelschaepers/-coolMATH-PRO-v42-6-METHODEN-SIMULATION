@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.0 (TOTAL MONSTER - SAMSUNG EDITION)
-# ZEITSTEMPEL: 17.02.2026 16:30 Uhr (v44 - echte Samsung DB + alle Fixes)
+# VERSION: 44.1 (Zahlenformat-Fix)
+# ZEITSTEMPEL: 20.02.2026 20:15 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
+# ==========================================
+# ÄNDERUNGEN v44.1 (gegenüber v44.0):
+# - Zahlenformat: Deutsche Schreibweise mit PUNKT als Tausendertrennzeichen
+#   (1.775 statt 1,775) in allen PDFs und Berichten
+# - Neue Funktion fmt_number() für konsistente Formatierung
 # ==========================================
 # ÄNDERUNGEN v44.0 (gegenüber v42):
 # - SAMSUNG_SERIEN Datenbank: 9 echte Serien aus Excel 
@@ -38,7 +43,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.76.5"
+APP_VERSION = "4.76.6"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -159,6 +164,20 @@ def pdf_safe(text):
         text = text.replace(uni, asc)
     # Final fallback: encode to latin-1, replace remaining unknowns
     return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
+def fmt_number(num, decimals=0):
+    """
+    Formatiert Zahlen in deutscher Schreibweise MIT PUNKT als Tausendertrennzeichen.
+    Beispiel: 1775 -> "1.775" (nicht "1,775")
+    """
+    if decimals == 0:
+        # Ganzzahl
+        formatted = f"{int(num):,}".replace(',', '.')
+    else:
+        # Mit Dezimalstellen
+        formatted = f"{num:,.{decimals}f}".replace(',', '.')
+    return formatted
 
 
 # ==========================================
@@ -1555,7 +1574,7 @@ def _make_cover(story, proj, kunde, bearbeiter, firma,
         ['Bearbeiter',      bearbeiter],
         ['Firma',           partner_firma or firma],
         ['Datum',           datetime.now().strftime('%d.%m.%Y')],
-        ['VDI 6007 Peak',   f'{peak_vdi:,} W ({peak_vdi/1000:.1f} kW)'],
+        ['VDI 6007 Peak',   f'{fmt_number(peak_vdi)} W ({peak_vdi/1000:.1f} kW)'],
         ['Installation',    f'{total_kw:.1f} kW gesamt (Samsung Wind-Free)'],
     ]
     
@@ -1647,7 +1666,7 @@ def _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_name
             if ag_kw and ag_kw > 0 and ag_typ == 'FJM':
                 try:
                     if ag_kw in FJM_AG_PRICES:
-                        ag_preis_str = f"{FJM_AG_PRICES[ag_kw]['preis']:,} EUR".replace(',', '.')
+                        ag_preis_str = f"{fmt_number(FJM_AG_PRICES[ag_kw]['preis'])} EUR"
                 except Exception:
                     pass
             
@@ -1816,8 +1835,8 @@ def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     summary  = (
         f"Für Projekt «{proj}» (Auftraggeber: {kunde}) wurde eine Kühllastanalyse "
         f"nach 6 Berechnungsverfahren durchgeführt. Simultanspitze VDI 6007: "
-        f"{peak_vdi:,} W ({peak_vdi/1000:.1f} kW). Das KI-Hybrid-Modell mit "
-        f"Pre-Cooling reduziert auf {peak_ki:,} W — Einsparung {einspar}%. "
+        f"{fmt_number(peak_vdi)} W ({peak_vdi/1000:.1f} kW). Das KI-Hybrid-Modell mit "
+        f"Pre-Cooling reduziert auf {fmt_number(peak_ki)} W — Einsparung {einspar}%. "
         f"Gesamtinstallation: {total_installed_kw:.1f} kW Samsung Wind-Free."
     )
     story.append(Paragraph(summary, _S['body']))
@@ -1828,13 +1847,13 @@ def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     hdr = ['Zone', 'VDI 6007', 'VDI 2078 Alt', 'Recknagel', 'Praktiker', 'Kaltl.see', 'KI-Hybrid']
     rows = [hdr]
     for r in room_results:
-        rows.append([r['ZONE'], f"{r['VDI NEU']:,}", f"{r['VDI ALT']:,}",
-                     f"{r['RECKNAGEL']:,}", f"{r['PRAKTIKER']:,}",
-                     f"{r.get('KALTLUFTSEE',0):,}", f"{r.get('KI HYBRID',0):,}"])
+        rows.append([r['ZONE'], fmt_number(r['VDI NEU']), fmt_number(r['VDI ALT']),
+                     fmt_number(r['RECKNAGEL']), fmt_number(r['PRAKTIKER']),
+                     fmt_number(r.get('KALTLUFTSEE',0)), fmt_number(r.get('KI HYBRID',0))])
     rows.append(['SIMULTAN-PEAK',
-                 f"{int(np.max(g_sums['VDI_N'])):,}", f"{int(np.max(g_sums['VDI_A'])):,}",
-                 f"{int(np.max(g_sums['RECK'])):,}",  f"{int(np.max(g_sums['PRAK'])):,}",
-                 f"{int(np.max(g_sums['KLTS'])):,}",  f"{int(np.max(g_sums['KI'])):,}"])
+                 fmt_number(int(np.max(g_sums['VDI_N']))), fmt_number(int(np.max(g_sums['VDI_A']))),
+                 fmt_number(int(np.max(g_sums['RECK']))),  fmt_number(int(np.max(g_sums['PRAK']))),
+                 fmt_number(int(np.max(g_sums['KLTS']))),  fmt_number(int(np.max(g_sums['KI'])))])
     t = Table(rows, colWidths=[28*mm,24*mm,24*mm,24*mm,24*mm,24*mm,24*mm], repeatRows=1)
     t.setStyle(_tbl_style_fn())
     story += [t, Spacer(1, 5*mm)]
@@ -1898,13 +1917,13 @@ def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     hdr = ['Zone', 'VDI Neu', 'VDI Alt', 'Recknagel', 'Praktiker', 'Kaltl.', 'KI-Hyb.']
     rows = [hdr]
     for r in room_results:
-        rows.append([r['ZONE'], f"{r['VDI NEU']:,}", f"{r['VDI ALT']:,}",
-                     f"{r['RECKNAGEL']:,}", f"{r['PRAKTIKER']:,}",
-                     f"{r.get('KALTLUFTSEE',0):,}", f"{r.get('KI HYBRID',0):,}"])
+        rows.append([r['ZONE'], fmt_number(r['VDI NEU']), fmt_number(r['VDI ALT']),
+                     fmt_number(r['RECKNAGEL']), fmt_number(r['PRAKTIKER']),
+                     fmt_number(r.get('KALTLUFTSEE',0)), fmt_number(r.get('KI HYBRID',0))])
     rows.append(['SIMULTAN-PEAK',
-                 f"{int(np.max(g_sums['VDI_N'])):,}", f"{int(np.max(g_sums['VDI_A'])):,}",
-                 f"{int(np.max(g_sums['RECK'])):,}",  f"{int(np.max(g_sums['PRAK'])):,}",
-                 f"{int(np.max(g_sums['KLTS'])):,}",  f"{int(np.max(g_sums['KI'])):,}"])
+                 fmt_number(int(np.max(g_sums['VDI_N']))), fmt_number(int(np.max(g_sums['VDI_A']))),
+                 fmt_number(int(np.max(g_sums['RECK']))),  fmt_number(int(np.max(g_sums['PRAK']))),
+                 fmt_number(int(np.max(g_sums['KLTS']))),  fmt_number(int(np.max(g_sums['KI'])))])
     t = Table(rows, colWidths=[28*mm,24*mm,24*mm,24*mm,24*mm,24*mm,24*mm], repeatRows=1)
     t.setStyle(_tbl_style_fn())
     story += [t, Spacer(1, 5*mm)]
@@ -2060,13 +2079,13 @@ def generate_word_report(proj, kunde, bearbeiter, firma, room_results, g_sums,
     hdr_r = ['Zone','VDI Neu','VDI Alt','Recknagel','Praktiker','Kaltl.see','KI-Hybrid']
     rows_r = []
     for r in room_results:
-        rows_r.append([r['ZONE'], f"{r['VDI NEU']:,}", f"{r['VDI ALT']:,}",
-                       f"{r['RECKNAGEL']:,}", f"{r['PRAKTIKER']:,}",
-                       f"{r.get('KALTLUFTSEE',0):,}", f"{r.get('KI HYBRID',0):,}"])
+        rows_r.append([r['ZONE'], fmt_number(r['VDI NEU']), fmt_number(r['VDI ALT']),
+                       fmt_number(r['RECKNAGEL']), fmt_number(r['PRAKTIKER']),
+                       fmt_number(r.get('KALTLUFTSEE',0)), fmt_number(r.get('KI HYBRID',0))])
     rows_r.append(['SIMULTAN-PEAK',
-                   f"{int(np.max(g_sums['VDI_N'])):,}", f"{int(np.max(g_sums['VDI_A'])):,}",
-                   f"{int(np.max(g_sums['RECK'])):,}", f"{int(np.max(g_sums['PRAK'])):,}",
-                   f"{int(np.max(g_sums['KLTS'])):,}", f"{int(np.max(g_sums['KI'])):,}"])
+                   fmt_number(int(np.max(g_sums['VDI_N']))), fmt_number(int(np.max(g_sums['VDI_A']))),
+                   fmt_number(int(np.max(g_sums['RECK']))), fmt_number(int(np.max(g_sums['PRAK']))),
+                   fmt_number(int(np.max(g_sums['KLTS']))), fmt_number(int(np.max(g_sums['KI'])))])
     _tbl(hdr_r, rows_r, [3.2,2.3,2.3,2.3,2.3,2.3,2.3])
 
     # Geräteauswahl
