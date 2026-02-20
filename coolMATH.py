@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.5 (COMPLETE - Alle Fixes)
-# ZEITSTEMPEL: 20.02.2026 21:45 Uhr
+# VERSION: 44.7 (Excel Single-Sheet)
+# ZEITSTEMPEL: 20.02.2026 22:30 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
+# ==========================================
+# ÄNDERUNGEN v44.7 (gegenüber v44.6):
+# - Excel-Anfrage: Alles in EINEM Sheet statt 4 separate Sheets
+#   Struktur: Projektinfo → Innengeräte → Außengeräte (übersichtlich)
 # ==========================================
 # ÄNDERUNGEN v44.5 (gegenüber v44.4):
 # - Monday.com Fix: save_to_monday Wrapper-Methode hinzugefügt
@@ -60,7 +64,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.77.0"
+APP_VERSION = "4.78.1"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -1989,21 +1993,6 @@ def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
     _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names,
                      show_prices=True, show_artnr=True, selected_ig_artnr=selected_ig_artnr)
 
-
-    # Samsung Empfehlungen
-    if any(samsung_recommendations):
-        story += _section_hdr('Samsung Empfehlungen', 'VDI 2078 Alt | Wind-Free Standard')
-        hdr3 = ['Zone', 'Modell', 'Art.-Nr.', 'kW', 'LP EUR']
-        rows3 = [hdr3]
-        for zi, sr in enumerate(samsung_recommendations):
-            p = sr.get('primary',{}) if sr else {}
-            zone_n = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
-            rows3.append([zone_n, p.get('model','—'), p.get('art_nr','—'),
-                           f"{p.get('kw_class',0):.1f}", f"{p.get('preis',0):.0f}"])
-        t3 = Table(rows3, colWidths=[28*mm, 45*mm, 38*mm, 18*mm, 26*mm], repeatRows=1)
-        t3.setStyle(_tbl_style_fn(total_row=False))
-        story += [t3, Spacer(1, 5*mm)]
-
     # Alle 6 Einzelzonen-Diagramme
     story.append(PageBreak())
     story += _section_hdr('Simultan-Diagramme', 'Alle 6 Berechnungsverfahren — Einzelzonen')
@@ -2038,9 +2027,10 @@ def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
 
 def generate_word_report(proj, kunde, bearbeiter, firma, room_results, g_sums,
                           selected_hw, total_installed_kw, selected_hw_ag=None,
-                          room_inputs=None, partner_firma=""):
+                          room_inputs=None, partner_firma="", selected_ig_artnr=None):
     """Word-Dokument mit python-docx — vollständiger Bericht"""
     if selected_hw_ag is None: selected_hw_ag = []
+    if selected_ig_artnr is None: selected_ig_artnr = ['—'] * 5
     if room_inputs is None:    room_inputs = [{} for _ in range(5)]
     try:
         from docx import Document as DocxDoc
@@ -2145,19 +2135,38 @@ def generate_word_report(proj, kunde, bearbeiter, firma, room_results, g_sums,
                    fmt_number(int(np.max(g_sums['KLTS']))), fmt_number(int(np.max(g_sums['KI'])))])
     _tbl(hdr_r, rows_r, [3.2,2.3,2.3,2.3,2.3,2.3,2.3])
 
-    # Geräteauswahl
-    _h('Geräteauswahl', level=1)
-    hdr_g = ['Zone','IG kW','AG Typ','AG Art.-Nr.','LP EUR']
-    rows_g = []
+    # Innengeräte
+    _h('Innengeräte', level=1)
+    hdr_ig = ['Zone', 'Leistung', 'Artikelnummer', 'Listenpreis']
+    rows_ig = []
     for zi in range(5):
-        ig_kw  = selected_hw[zi] if zi < len(selected_hw) else 0
-        ag_inf = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—',0,'N.V.')
-        rows_g.append([zone_names[zi],
-                       f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
-                       ag_inf[0] if isinstance(ag_inf,(list,tuple)) else '—',
-                       ag_inf[2] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>2 else 'N.V.',
-                       '(s. Angebot)'])
-    _tbl(hdr_g, rows_g, [2.8,2.5,2,5.5,3])
+        ig_kw = selected_hw[zi] if zi < len(selected_hw) else 0
+        ig_artnr = selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—'
+        rows_ig.append([
+            zone_names[zi],
+            f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
+            ig_artnr,
+            '(s. Angebot)'
+        ])
+    _tbl(hdr_ig, rows_ig, [3.0, 2.5, 6.0, 3.5])
+    
+    # Außengeräte
+    _h('Außengeräte', level=1)
+    hdr_ag = ['Zone', 'Typ', 'Leistung', 'Artikelnummer', 'Listenpreis']
+    rows_ag = []
+    for zi in range(5):
+        ag_inf = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—', 0, 'N.V.')
+        ag_typ = ag_inf[0] if isinstance(ag_inf, (list, tuple)) else '—'
+        ag_kw = ag_inf[1] if isinstance(ag_inf, (list, tuple)) and len(ag_inf) > 1 else 0
+        ag_artnr = ag_inf[2] if isinstance(ag_inf, (list, tuple)) and len(ag_inf) > 2 else 'N.V.'
+        rows_ag.append([
+            zone_names[zi],
+            ag_typ,
+            f'{ag_kw:.1f} kW' if ag_kw else 'N.V.',
+            ag_artnr,
+            '(s. Angebot)'
+        ])
+    _tbl(hdr_ag, rows_ag, [2.8, 2.0, 2.5, 5.5, 3.0])
     _p(f'Gesamt: {sum(selected_hw):.1f} kW', bold=True, size=11)
 
     # Copyright + Haftung
@@ -2174,86 +2183,90 @@ def generate_excel_anfrage(proj, kunde, bearbeiter, firma, selected_hw, selected
                            zone_names, selected_ig_artnr=None, liefertermin="—"):
     """
     Generiert Excel-Anfrage für °coolsulting
-    Enthält: Projekt-Info, Innengeräte-Liste, Außengeräte-Liste
+    ALLES IN EINEM SHEET mit übersichtlicher Struktur
     """
     if selected_ig_artnr is None:
         selected_ig_artnr = ['—'] * 5
     
-    # Erstelle Excel mit pandas
-    output = _io.BytesIO()
+    # Sammle alle Daten in einer Liste (Zeilen)
+    rows = []
     
+    # ===== PROJEKTINFORMATIONEN =====
+    rows.append(['PROJEKTINFORMATIONEN', '', '', '', ''])
+    rows.append(['Projekt', proj, '', '', ''])
+    rows.append(['Kunde', kunde, '', '', ''])
+    rows.append(['Bearbeiter', bearbeiter, '', '', ''])
+    rows.append(['Firma', firma, '', '', ''])
+    rows.append(['Datum', datetime.now().strftime('%d.%m.%Y'), '', '', ''])
+    rows.append(['Liefertermin', liefertermin, '', '', ''])
+    rows.append(['', '', '', '', ''])  # Leerzeile
+    
+    # ===== INNENGERÄTE =====
+    rows.append(['INNENGERÄTE', '', '', '', ''])
+    rows.append(['Zone', 'Leistung [kW]', 'Artikelnummer', 'Menge', ''])
+    
+    for zi in range(5):
+        if zi < len(selected_hw) and selected_hw[zi] > 0:
+            rows.append([
+                zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
+                selected_hw[zi],
+                selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—',
+                1,
+                ''
+            ])
+    
+    rows.append(['', '', '', '', ''])  # Leerzeile
+    
+    # ===== AUSSENGERÄTE =====
+    rows.append(['AUSSENGERÄTE', '', '', '', ''])
+    rows.append(['Zone', 'Typ', 'Leistung [kW]', 'Artikelnummer', 'Menge'])
+    
+    for zi in range(5):
+        if zi < len(selected_hw_ag):
+            ag_inf = selected_hw_ag[zi]
+            if isinstance(ag_inf, (list, tuple)) and len(ag_inf) >= 3:
+                ag_typ = ag_inf[0]
+                ag_kw = ag_inf[1]
+                ag_artnr = ag_inf[2]
+                
+                if ag_kw > 0 and ag_artnr != 'N.V.':
+                    rows.append([
+                        zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
+                        ag_typ,
+                        ag_kw,
+                        ag_artnr,
+                        1
+                    ])
+    
+    # Erstelle DataFrame und Excel
+    df = pd.DataFrame(rows)
+    
+    output = _io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Sheet 1: Projektinformationen
-        projekt_data = {
-            'Feld': ['Projekt', 'Kunde', 'Bearbeiter', 'Firma', 'Datum', 'Liefertermin'],
-            'Wert': [proj, kunde, bearbeiter, firma, 
-                    datetime.now().strftime('%d.%m.%Y'), liefertermin]
-        }
-        df_projekt = pd.DataFrame(projekt_data)
-        df_projekt.to_excel(writer, sheet_name='Projektinfo', index=False)
+        df.to_excel(writer, sheet_name='Anfrage', index=False, header=False)
         
-        # Sheet 2: Innengeräte
-        ig_data = []
-        for zi in range(5):
-            if zi < len(selected_hw) and selected_hw[zi] > 0:
-                ig_data.append({
-                    'Zone': zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
-                    'Leistung [kW]': selected_hw[zi],
-                    'Artikelnummer': selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—',
-                    'Menge': 1
-                })
+        # Formatierung
+        workbook = writer.book
+        worksheet = writer.sheets['Anfrage']
         
-        if ig_data:
-            df_ig = pd.DataFrame(ig_data)
-            df_ig.to_excel(writer, sheet_name='Innengeräte', index=False)
+        # Spaltenbreiten anpassen
+        worksheet.column_dimensions['A'].width = 20
+        worksheet.column_dimensions['B'].width = 18
+        worksheet.column_dimensions['C'].width = 25
+        worksheet.column_dimensions['D'].width = 25
+        worksheet.column_dimensions['E'].width = 10
         
-        # Sheet 3: Außengeräte
-        ag_data = []
-        for zi in range(5):
-            if zi < len(selected_hw_ag):
-                ag_inf = selected_hw_ag[zi]
-                if isinstance(ag_inf, (list, tuple)) and len(ag_inf) >= 3:
-                    ag_typ = ag_inf[0]
-                    ag_kw = ag_inf[1]
-                    ag_artnr = ag_inf[2]
-                    
-                    if ag_kw > 0 and ag_artnr != 'N.V.':
-                        ag_data.append({
-                            'Zone': zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
-                            'Typ': ag_typ,
-                            'Leistung [kW]': ag_kw,
-                            'Artikelnummer': ag_artnr,
-                            'Menge': 1
-                        })
+        # Überschriften fett machen (PROJEKTINFORMATIONEN, INNENGERÄTE, AUSSENGERÄTE)
+        from openpyxl.styles import Font, Alignment
+        bold_font = Font(bold=True, size=12)
+        header_font = Font(bold=True, size=10)
         
-        if ag_data:
-            df_ag = pd.DataFrame(ag_data)
-            df_ag.to_excel(writer, sheet_name='Außengeräte', index=False)
-        
-        # Sheet 4: Zusammenfassung für Bestellung
-        bestellung_data = []
-        # Innengeräte
-        for item in ig_data:
-            bestellung_data.append({
-                'Typ': 'Innengerät',
-                'Zone': item['Zone'],
-                'Artikelnummer': item['Artikelnummer'],
-                'Leistung [kW]': item['Leistung [kW]'],
-                'Menge': item['Menge']
-            })
-        # Außengeräte
-        for item in ag_data:
-            bestellung_data.append({
-                'Typ': 'Außengerät',
-                'Zone': item['Zone'],
-                'Artikelnummer': item['Artikelnummer'],
-                'Leistung [kW]': item['Leistung [kW]'],
-                'Menge': item['Menge']
-            })
-        
-        if bestellung_data:
-            df_bestellung = pd.DataFrame(bestellung_data)
-            df_bestellung.to_excel(writer, sheet_name='Bestellung', index=False)
+        for row in worksheet.iter_rows():
+            cell_value = str(row[0].value) if row[0].value else ''
+            if cell_value in ['PROJEKTINFORMATIONEN', 'INNENGERÄTE', 'AUSSENGERÄTE']:
+                row[0].font = bold_font
+            elif cell_value in ['Zone', 'Projekt', 'Kunde', 'Bearbeiter', 'Firma', 'Datum', 'Liefertermin']:
+                row[0].font = header_font
     
     output.seek(0)
     return output.getvalue()
@@ -3310,7 +3323,8 @@ def main():
                         room_results, g_sums, selected_hw, total_kw,
                         selected_hw_ag=selected_hw_ag,
                         room_inputs=room_inputs_list,
-                        partner_firma=partner_firma
+                        partner_firma=partner_firma,
+                        selected_ig_artnr=selected_ig_artnr
                     )
                     st.download_button("⬇️ WORD HERUNTERLADEN", word_bytes,
                         file_name=f"coolMATH_{proj_name}_{datetime.now().strftime('%Y%m%d')}.docx",
