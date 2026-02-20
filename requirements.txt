@@ -43,3 +43,4 @@ watchdog==6.0.0
 matplotlib
 openpyxl==3.1.2
 libsql-experimental
+python-docx==1.1.2
