@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.7 (Excel Single-Sheet)
-# ZEITSTEMPEL: 20.02.2026 22:30 Uhr
+# VERSION: 44.9 (Firma-Fix FINAL)
+# ZEITSTEMPEL: 20.02.2026 23:00 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
 # ==========================================
-# ÄNDERUNGEN v44.7 (gegenüber v44.6):
-# - Excel-Anfrage: Alles in EINEM Sheet statt 4 separate Sheets
-#   Struktur: Projektinfo → Innengeräte → Außengeräte (übersichtlich)
+# ÄNDERUNGEN v44.9 (gegenüber v44.8):
+# - CRITICAL FIX: partner_firma wird NACH Expander gesetzt (war vorher nur im Expander)
+# - Firma-Feld funktioniert jetzt korrekt in PDF, Word und Monday
+# - VDI 6007 Peak ist entfernt (war schon in v44.8)
 # ==========================================
 # ÄNDERUNGEN v44.5 (gegenüber v44.4):
 # - Monday.com Fix: save_to_monday Wrapper-Methode hinzugefügt
@@ -64,7 +65,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.78.1"
+APP_VERSION = "4.80.0"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -1610,7 +1611,6 @@ def _make_cover(story, proj, kunde, bearbeiter, firma,
         ['Bearbeiter',      bearbeiter],
         ['Firma',           partner_firma or firma],
         ['Datum',           datetime.now().strftime('%d.%m.%Y')],
-        ['VDI 6007 Peak',   f'{fmt_number(peak_vdi)} W ({peak_vdi/1000:.1f} kW)'],
         ['Installation',    f'{total_kw:.1f} kW gesamt (Samsung Wind-Free)'],
     ]
     
@@ -2280,7 +2280,6 @@ def main():
     # auth_ok, auth_user = check_login()
     # if not auth_ok:
     #     return
-    partner_firma = "°coolsulting"
     auth_role     = "admin"
     auth_username = "demo"
 
@@ -2353,6 +2352,9 @@ def main():
             liefertermin_str = liefertermin.strftime("%d.%m.%Y")
         else:
             liefertermin_str = "—"
+    
+    # Partner-Firma für PDFs (aus Input übernehmen)
+    partner_firma = firma
     
     # --- GEBÄUDE-PARAMETER ---
     st.markdown('<div class="section-header">🏢 Gebäude-Parameter</div>', unsafe_allow_html=True)
