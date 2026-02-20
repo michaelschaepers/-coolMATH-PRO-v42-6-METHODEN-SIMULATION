@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.1 (Zahlenformat-Fix)
-# ZEITSTEMPEL: 20.02.2026 20:15 Uhr
+# VERSION: 44.3 (Liefertermin-Feld)
+# ZEITSTEMPEL: 20.02.2026 21:00 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
+# ==========================================
+# ÄNDERUNGEN v44.3 (gegenüber v44.2):
+# - Liefertermin-Feld im UI (optionaler Kalender-Picker)
+# - Liefertermin wird im Technikübergabe-PDF angezeigt
+# ==========================================
+# ÄNDERUNGEN v44.2 (gegenüber v44.1):
+# - Gerätetabelle aufgeteilt: Separate Tabellen für Innengeräte und Außengeräte
+# - Bessere Übersichtlichkeit im Übergabe-PDF
 # ==========================================
 # ÄNDERUNGEN v44.1 (gegenüber v44.0):
 # - Zahlenformat: Deutsche Schreibweise mit PUNKT als Tausendertrennzeichen
@@ -43,7 +51,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.76.6"
+APP_VERSION = "4.76.8"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -1518,7 +1526,7 @@ def _thermal_cover_graphic(canvas, x, y, w, h):
     canvas.restoreState()
 
 def _make_cover(story, proj, kunde, bearbeiter, firma,
-                partner_firma, report_type, g_sums, selected_hw):
+                partner_firma, report_type, g_sums, selected_hw, liefertermin="—"):
     """Deckblatt - EINFACHER STIL WIE SEITE 2"""
     
     # 1. BLAUER HEADER
@@ -1578,6 +1586,10 @@ def _make_cover(story, proj, kunde, bearbeiter, firma,
         ['Installation',    f'{total_kw:.1f} kW gesamt (Samsung Wind-Free)'],
     ]
     
+    # Liefertermin nur bei Technikübergabe
+    if report_type == 'uebergabe' and liefertermin != "—":
+        info_rows.append(['📅 Liefertermin', liefertermin])
+    
     info_tbl = Table([[
         Paragraph(r[0], ParagraphStyle('lbl', fontName='Helvetica-Bold',
             fontSize=10, textColor=_DARK)),
@@ -1632,55 +1644,75 @@ def _eingabe_tabelle(story, room_inputs, zone_names):
 
 def _geraete_tabelle(story, room_results, selected_hw, selected_hw_ag, zone_names, 
                      show_prices=True, show_artnr=True, selected_ig_artnr=None):
-    """IG + AG Gerätetabelle - Kunde: keine Preise/Art.-Nr., Technik: mit Preisen"""
+    """IG + AG Gerätetabelle - AUFGETEILT IN ZWEI SEPARATE TABELLEN"""
     if selected_ig_artnr is None:
         selected_ig_artnr = ['—'] * 5
-    story += _section_hdr('Geräteauswahl inkl. Listenpreise' if show_prices else 'Geräteauswahl', 
-                         'Innen- und Außengeräte je Zone')
     
-    # Header + Spalten je nach Modus
+    # ===== TABELLE 1: INNENGERÄTE =====
+    story += _section_hdr('Innengeräte', 'Übersicht Innengeräte je Zone')
+    
     if show_prices:
-        hdr = ['Zone', 'IG kW', 'AG Typ', 'AG Art.-Nr.', 'IG Art.-Nr.', 'AG LP [EUR]']
-        widths = [28*mm, 18*mm, 20*mm, 40*mm, 40*mm, 25*mm]
-    elif show_artnr:
-        hdr = ['Zone', 'IG Leistung', 'IG Art.-Nr.', 'AG Typ', 'AG Art.-Nr.']
-        widths = [28*mm, 28*mm, 42*mm, 22*mm, 42*mm]
+        hdr_ig = ['Zone', 'Leistung', 'Artikelnummer', 'Listenpreis']
+        widths_ig = [35*mm, 25*mm, 55*mm, 35*mm]
     else:
-        # Kundenbericht: nur Zone, IG Leistung, AG Typ
-        hdr = ['Zone', 'IG Leistung', 'AG Typ']
-        widths = [55*mm, 50*mm, 57*mm]
+        hdr_ig = ['Zone', 'Leistung', 'Artikelnummer']
+        widths_ig = [50*mm, 35*mm, 65*mm]
     
-    rows = [hdr]
+    rows_ig = [hdr_ig]
     for zi in range(5):
-        ig_kw  = selected_hw[zi]   if zi < len(selected_hw) else 0
+        ig_kw = selected_hw[zi] if zi < len(selected_hw) else 0
         ig_artnr = selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—'
-        ag_inf = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—', 0, 'N.V.')
-        ag_typ  = ag_inf[0] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>0 else '—'
-        ag_kw   = ag_inf[1] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>1 else 0
-        ag_artnr= ag_inf[2] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>2 else 'N.V.'
-        zone_n  = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
+        zone_n = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
+        
+        # IG-Preis (TODO: aus Daten holen wenn verfügbar)
+        ig_preis_str = '—'
         
         if show_prices:
-            # AG-Preis ermitteln
-            ag_preis_str = '—'
-            if ag_kw and ag_kw > 0 and ag_typ == 'FJM':
-                try:
-                    if ag_kw in FJM_AG_PRICES:
-                        ag_preis_str = f"{fmt_number(FJM_AG_PRICES[ag_kw]['preis'])} EUR"
-                except Exception:
-                    pass
-            
-            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', 
-                        ag_typ, ag_artnr, ig_artnr, ag_preis_str])
-        elif show_artnr:
-            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.',
-                        ig_artnr, ag_typ, ag_artnr])
+            rows_ig.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', 
+                           ig_artnr, ig_preis_str])
         else:
-            rows.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', ag_typ])
+            rows_ig.append([zone_n, f'{ig_kw:.1f} kW' if ig_kw else 'N.V.', ig_artnr])
     
-    t = Table(rows, colWidths=widths, repeatRows=1)
-    t.setStyle(_tbl_style_fn(total_row=False))
-    story += [t, Spacer(1, 5*mm)]
+    t_ig = Table(rows_ig, colWidths=widths_ig, repeatRows=1)
+    t_ig.setStyle(_tbl_style_fn(total_row=False))
+    story += [t_ig, Spacer(1, 8*mm)]
+    
+    # ===== TABELLE 2: AUSSENGERÄTE =====
+    story += _section_hdr('Außengeräte', 'Übersicht Außengeräte je Zone')
+    
+    if show_prices:
+        hdr_ag = ['Zone', 'Typ', 'Leistung', 'Artikelnummer', 'Listenpreis']
+        widths_ag = [30*mm, 22*mm, 25*mm, 50*mm, 35*mm]
+    else:
+        hdr_ag = ['Zone', 'Typ', 'Artikelnummer']
+        widths_ag = [50*mm, 35*mm, 65*mm]
+    
+    rows_ag = [hdr_ag]
+    for zi in range(5):
+        ag_inf = selected_hw_ag[zi] if zi < len(selected_hw_ag) else ('—', 0, 'N.V.')
+        ag_typ = ag_inf[0] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>0 else '—'
+        ag_kw = ag_inf[1] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>1 else 0
+        ag_artnr = ag_inf[2] if isinstance(ag_inf,(list,tuple)) and len(ag_inf)>2 else 'N.V.'
+        zone_n = zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}'
+        
+        # AG-Preis ermitteln
+        ag_preis_str = '—'
+        if ag_kw and ag_kw > 0 and ag_typ == 'FJM':
+            try:
+                if ag_kw in FJM_AG_PRICES:
+                    ag_preis_str = f"{fmt_number(FJM_AG_PRICES[ag_kw]['preis'])} EUR"
+            except Exception:
+                pass
+        
+        if show_prices:
+            rows_ag.append([zone_n, ag_typ, f'{ag_kw:.1f} kW' if ag_kw else 'N.V.', 
+                           ag_artnr, ag_preis_str])
+        else:
+            rows_ag.append([zone_n, ag_typ, ag_artnr])
+    
+    t_ag = Table(rows_ag, colWidths=widths_ag, repeatRows=1)
+    t_ag.setStyle(_tbl_style_fn(total_row=False))
+    story += [t_ag, Spacer(1, 5*mm)]
 
 
 
@@ -1892,7 +1924,8 @@ def generate_kunden_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
 def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
                             individual_profiles, samsung_recommendations,
                             selected_hw, total_installed_kw, selected_hw_ag=None,
-                            room_inputs=None, partner_firma="", selected_ig_artnr=None):
+                            room_inputs=None, partner_firma="", selected_ig_artnr=None,
+                            liefertermin="—"):
     if selected_hw_ag is None: selected_hw_ag = []
     if selected_ig_artnr is None: selected_ig_artnr = ['—'] * 5
     if room_inputs is None:    room_inputs = [{} for _ in range(5)]
@@ -1907,7 +1940,7 @@ def generate_uebergabe_pdf(proj, kunde, bearbeiter, firma, room_results, g_sums,
 
     # Deckblatt
     _make_cover(story, proj, kunde, bearbeiter, firma,
-                partner_firma, 'uebergabe', g_sums, selected_hw)
+                partner_firma, 'uebergabe', g_sums, selected_hw, liefertermin)
 
     # Eingabedaten
     _eingabe_tabelle(story, room_inputs, zone_names)
@@ -2183,6 +2216,18 @@ def main():
         kunde_name = px2.text_input("KUNDE", default_kunde)
         bearbeiter = px3.text_input("BEARBEITER", default_bearb)
         firma      = px4.text_input("FIRMA", "°coolsulting")
+        
+        # Liefertermin-Feld
+        px5, px6 = st.columns([1, 3])
+        liefertermin = px5.date_input(
+            "📅 LIEFERTERMIN",
+            value=None,
+            help="Optionaler Liefertermin für Technikübergabe-PDF"
+        )
+        if liefertermin:
+            liefertermin_str = liefertermin.strftime("%d.%m.%Y")
+        else:
+            liefertermin_str = "—"
     
     # --- GEBÄUDE-PARAMETER ---
     st.markdown('<div class="section-header">🏢 Gebäude-Parameter</div>', unsafe_allow_html=True)
@@ -3078,7 +3123,8 @@ def main():
                         selected_hw_ag=selected_hw_ag,
                         room_inputs=room_inputs_list,
                         partner_firma=partner_firma,
-                        selected_ig_artnr=selected_ig_artnr
+                        selected_ig_artnr=selected_ig_artnr,
+                        liefertermin=liefertermin_str
                     )
                     st.download_button(
                         "⬇️ DOWNLOAD TECHNIKÜBERGABE",
