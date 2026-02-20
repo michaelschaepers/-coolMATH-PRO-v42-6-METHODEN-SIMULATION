@@ -1,9 +1,18 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.3 (Liefertermin-Feld)
-# ZEITSTEMPEL: 20.02.2026 21:00 Uhr
+# VERSION: 44.5 (COMPLETE - Alle Fixes)
+# ZEITSTEMPEL: 20.02.2026 21:45 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
+# ==========================================
+# ÄNDERUNGEN v44.5 (gegenüber v44.4):
+# - Monday.com Fix: save_to_monday Wrapper-Methode hinzugefügt
+# - requirements.txt: python-docx==1.1.2 hinzugefügt
+# ==========================================
+# ÄNDERUNGEN v44.4 (gegenüber v44.3):
+# - Word-Export: Prüft ob python-docx installiert ist, zeigt Warnung wenn nicht
+# - Excel-Anfrage: Neue Funktion zum Export der Geräteauswahl als Excel
+#   (4 Sheets: Projektinfo, Innengeräte, Außengeräte, Bestellung)
 # ==========================================
 # ÄNDERUNGEN v44.3 (gegenüber v44.2):
 # - Liefertermin-Feld im UI (optionaler Kalender-Picker)
@@ -51,7 +60,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.76.8"
+APP_VERSION = "4.77.0"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -172,6 +181,15 @@ def pdf_safe(text):
         text = text.replace(uni, asc)
     # Final fallback: encode to latin-1, replace remaining unknowns
     return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
+def is_docx_available():
+    """Prüft ob python-docx installiert ist"""
+    try:
+        import docx
+        return True
+    except ImportError:
+        return False
 
 
 def fmt_number(num, decimals=0):
@@ -1271,6 +1289,12 @@ class MondayIntegration:
 
         except Exception as e:
             return False, f"Exception: {str(e)}"
+    
+    def save_to_monday(self, data: Dict, pdf_bytes: bytes = None, filename: str = None) -> tuple:
+        """
+        Wrapper für save_quote_to_monday - kompatibel mit altem Aufruf
+        """
+        return self.save_quote_to_monday(data, pdf_bytes, filename)
 
 
 # ── Streamlit Helper ──
@@ -2145,6 +2169,94 @@ def generate_word_report(proj, kunde, bearbeiter, firma, room_results, g_sums,
     doc.save(buf)
     return buf.getvalue()
 
+
+def generate_excel_anfrage(proj, kunde, bearbeiter, firma, selected_hw, selected_hw_ag, 
+                           zone_names, selected_ig_artnr=None, liefertermin="—"):
+    """
+    Generiert Excel-Anfrage für °coolsulting
+    Enthält: Projekt-Info, Innengeräte-Liste, Außengeräte-Liste
+    """
+    if selected_ig_artnr is None:
+        selected_ig_artnr = ['—'] * 5
+    
+    # Erstelle Excel mit pandas
+    output = _io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Sheet 1: Projektinformationen
+        projekt_data = {
+            'Feld': ['Projekt', 'Kunde', 'Bearbeiter', 'Firma', 'Datum', 'Liefertermin'],
+            'Wert': [proj, kunde, bearbeiter, firma, 
+                    datetime.now().strftime('%d.%m.%Y'), liefertermin]
+        }
+        df_projekt = pd.DataFrame(projekt_data)
+        df_projekt.to_excel(writer, sheet_name='Projektinfo', index=False)
+        
+        # Sheet 2: Innengeräte
+        ig_data = []
+        for zi in range(5):
+            if zi < len(selected_hw) and selected_hw[zi] > 0:
+                ig_data.append({
+                    'Zone': zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
+                    'Leistung [kW]': selected_hw[zi],
+                    'Artikelnummer': selected_ig_artnr[zi] if zi < len(selected_ig_artnr) else '—',
+                    'Menge': 1
+                })
+        
+        if ig_data:
+            df_ig = pd.DataFrame(ig_data)
+            df_ig.to_excel(writer, sheet_name='Innengeräte', index=False)
+        
+        # Sheet 3: Außengeräte
+        ag_data = []
+        for zi in range(5):
+            if zi < len(selected_hw_ag):
+                ag_inf = selected_hw_ag[zi]
+                if isinstance(ag_inf, (list, tuple)) and len(ag_inf) >= 3:
+                    ag_typ = ag_inf[0]
+                    ag_kw = ag_inf[1]
+                    ag_artnr = ag_inf[2]
+                    
+                    if ag_kw > 0 and ag_artnr != 'N.V.':
+                        ag_data.append({
+                            'Zone': zone_names[zi] if zi < len(zone_names) else f'Zone {zi+1}',
+                            'Typ': ag_typ,
+                            'Leistung [kW]': ag_kw,
+                            'Artikelnummer': ag_artnr,
+                            'Menge': 1
+                        })
+        
+        if ag_data:
+            df_ag = pd.DataFrame(ag_data)
+            df_ag.to_excel(writer, sheet_name='Außengeräte', index=False)
+        
+        # Sheet 4: Zusammenfassung für Bestellung
+        bestellung_data = []
+        # Innengeräte
+        for item in ig_data:
+            bestellung_data.append({
+                'Typ': 'Innengerät',
+                'Zone': item['Zone'],
+                'Artikelnummer': item['Artikelnummer'],
+                'Leistung [kW]': item['Leistung [kW]'],
+                'Menge': item['Menge']
+            })
+        # Außengeräte
+        for item in ag_data:
+            bestellung_data.append({
+                'Typ': 'Außengerät',
+                'Zone': item['Zone'],
+                'Artikelnummer': item['Artikelnummer'],
+                'Leistung [kW]': item['Leistung [kW]'],
+                'Menge': item['Menge']
+            })
+        
+        if bestellung_data:
+            df_bestellung = pd.DataFrame(bestellung_data)
+            df_bestellung.to_excel(writer, sheet_name='Bestellung', index=False)
+    
+    output.seek(0)
+    return output.getvalue()
 
 
 def main():
@@ -3177,17 +3289,20 @@ def main():
                     st.error(f"Fehler: {e}")
     
     # ==========================================
-    # WORD-EXPORT + DB-SPEICHERUNG + MONDAY
+    # WORD-EXPORT + DB-SPEICHERUNG + MONDAY + EXCEL
     # ==========================================
-    st.markdown('<div class="section-header">📁 Word-Export | 💾 Projekt Speichern | 📤 Monday.com</div>',
+    st.markdown('<div class="section-header">📁 Word-Export | 💾 Projekt Speichern | 📤 Monday.com | 📊 Excel-Anfrage</div>',
                 unsafe_allow_html=True)
-    wrd1, wrd2, wrd3 = st.columns(3)
+    wrd1, wrd2, wrd3, wrd4 = st.columns(4)
 
     with wrd1:
         st.markdown("""<div class="card-blue"><div style="font-size:11px;font-weight:700;opacity:0.8;margin-bottom:8px">
         📄 WORD-BERICHT</div><div style="font-size:12px">Vollständiger Bericht als .docx — editierbar, 
         mit Eingabedaten, Ergebnis-Matrix, Geräteauswahl.</div></div>""", unsafe_allow_html=True)
-        if st.button("📝 WORD GENERIEREN", width="stretch"):
+        
+        if not is_docx_available():
+            st.warning("⚠️ `python-docx` nicht installiert. Bitte installieren:\n```\npip install python-docx\n```")
+        elif st.button("📝 WORD GENERIEREN", width="stretch"):
             with st.spinner("Word wird erstellt..."):
                 try:
                     word_bytes = generate_word_report(
@@ -3261,6 +3376,31 @@ def main():
                             st.error(f"Fehler: {item_id}")
                     except Exception as e:
                         st.error(f"Monday-Fehler: {e}")
+    
+    with wrd4:
+        st.markdown("""<div class="card-blue"><div style="font-size:11px;font-weight:700;opacity:0.8;margin-bottom:8px">
+        📊 EXCEL-ANFRAGE</div><div style="font-size:12px">Geräte-Anfrage als Excel für °coolsulting — 
+        Innen- und Außengeräte mit Artikelnummern.</div></div>""", unsafe_allow_html=True)
+        if st.button("📊 EXCEL GENERIEREN", width="stretch"):
+            with st.spinner("Excel wird erstellt..."):
+                try:
+                    excel_bytes = generate_excel_anfrage(
+                        proj_name, kunde_name, bearbeiter, firma,
+                        selected_hw, selected_hw_ag, zone_names,
+                        selected_ig_artnr=selected_ig_artnr,
+                        liefertermin=liefertermin_str
+                    )
+                    st.download_button(
+                        "⬇️ EXCEL HERUNTERLADEN",
+                        data=excel_bytes,
+                        file_name=f"coolMATH_Anfrage_{proj_name}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        width="stretch",
+                        key="excel_dl"
+                    )
+                    st.success("✅ Excel-Anfrage bereit!")
+                except Exception as e:
+                    st.error(f"Fehler: {e}")
 
     # ==========================================
     # PROJEKTARCHIV
