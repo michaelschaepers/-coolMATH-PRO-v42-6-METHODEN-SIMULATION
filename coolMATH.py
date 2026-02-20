@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 # ==========================================
 # DATEI: coolMATH.py
-# VERSION: 44.9 (Firma-Fix FINAL)
-# ZEITSTEMPEL: 20.02.2026 23:00 Uhr
+# VERSION: 44.10 (UnboundLocalError Fix)
+# ZEITSTEMPEL: 20.02.2026 23:15 Uhr
 # AUTOR: Michael Schäpers, °coolsulting
 # ==========================================
-# ÄNDERUNGEN v44.9 (gegenüber v44.8):
-# - CRITICAL FIX: partner_firma wird NACH Expander gesetzt (war vorher nur im Expander)
-# - Firma-Feld funktioniert jetzt korrekt in PDF, Word und Monday
-# - VDI 6007 Peak ist entfernt (war schon in v44.8)
+# ÄNDERUNGEN v44.10 (gegenüber v44.9):
+# - FIX: partner_firma UnboundLocalError - wird initial gesetzt, später überschrieben
 # ==========================================
 # ÄNDERUNGEN v44.5 (gegenüber v44.4):
 # - Monday.com Fix: save_to_monday Wrapper-Methode hinzugefügt
@@ -65,7 +63,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 # --- BRANDING KONSTANTEN ---
-APP_VERSION = "4.80.0"
+APP_VERSION = "4.81.0"
 CI_BLUE = "#36A9E1"
 CI_GRAY = "#3C3C3B"
 CI_WHITE = "#FFFFFF"
@@ -2282,6 +2280,7 @@ def main():
     #     return
     auth_role     = "admin"
     auth_username = "demo"
+    partner_firma = "°coolsulting"  # Wird später aus Input überschrieben
 
 
     # --- HEADER (Bug-freier Aufbau) ---
